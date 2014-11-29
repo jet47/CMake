@@ -53,7 +53,8 @@ private:
     ADDRESS_SANITIZER,
     THREAD_SANITIZER,
     MEMORY_SANITIZER,
-    UB_SANITIZER
+    UB_SANITIZER,
+    CUDA_MEMCHECK
   };
 public:
   enum { // Memory faults
@@ -141,6 +142,9 @@ private:
   bool ProcessMemCheckBoundsCheckerOutput(const std::string& str,
                                           std::string& log,
                                           std::vector<int>& results);
+  bool ProcessMemCheckCudaMemCheckOutput(const std::string& str,
+                                         std::string& log,
+                                         std::vector<int>& results);
 
   void PostProcessTest(cmCTestTestResult& res, int test);
   void PostProcessBoundsCheckerTest(cmCTestTestResult& res, int test);

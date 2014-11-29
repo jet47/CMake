@@ -138,6 +138,7 @@ public:
 #define BOUNDS_CHECKER_MARKER \
 "******######*****Begin BOUNDS CHECKER XML******######******"
 
+#define CUDA_MEMCHECK_MARKER "==[CUDA_MEMCHECK]=="
 
 
 //----------------------------------------------------------------------
@@ -382,6 +383,9 @@ void cmCTestMemCheckHandler::GenerateDartOutput(std::ostream& os)
     case cmCTestMemCheckHandler::UB_SANITIZER:
       os << "UndefinedBehaviorSanitizer";
       break;
+    case cmCTestMemCheckHandler::CUDA_MEMCHECK:
+      os << "CudaMemCheck";
+      break;
     default:
       os << "Unknown";
     }
@@ -493,6 +497,7 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
 {
   this->MemoryTesterEnvironmentVariable = "";
   this->MemoryTester = "";
+
   // Setup the command
   if ( cmSystemTools::FileExists(this->CTest->GetCTestConfiguration(
         "MemoryCheckCommand").c_str()) )
@@ -515,6 +520,12 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
     else if ( testerName.find("BC") != std::string::npos )
       {
       this->MemoryTesterStyle = cmCTestMemCheckHandler::BOUNDS_CHECKER;
+      }
+    else if ( testerName.find("cuda-memcheck") != std::string::npos ||
+         this->CTest->GetCTestConfiguration("MemoryCheckType")
+         == "CudaMemCheck")
+      {
+        this->MemoryTesterStyle = cmCTestMemCheckHandler::CUDA_MEMCHECK;
       }
     else
       {
@@ -542,6 +553,14 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
       = this->CTest->GetCTestConfiguration("BoundsCheckerCommand").c_str();
     this->MemoryTesterStyle = cmCTestMemCheckHandler::BOUNDS_CHECKER;
     }
+  else if ( cmSystemTools::FileExists(this->CTest->GetCTestConfiguration(
+        "CudaMemCheckCommand").c_str()) )
+    {
+    this->MemoryTester
+      = this->CTest->GetCTestConfiguration("CudaMemCheckCommand").c_str();
+    this->MemoryTesterStyle = cmCTestMemCheckHandler::CUDA_MEMCHECK;
+    }
+
   if ( this->CTest->GetCTestConfiguration("MemoryCheckType")
        == "AddressSanitizer")
     {
@@ -574,6 +593,7 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
     this->MemoryTesterStyle = cmCTestMemCheckHandler::UB_SANITIZER;
     this->LogWithPID = true; // even if we give the log file the pid is added
     }
+
   // Check the MemoryCheckType
   if(this->MemoryTesterStyle == cmCTestMemCheckHandler::UNKNOWN)
     {
@@ -590,6 +610,10 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
     else if(checkType == "Valgrind")
       {
       this->MemoryTesterStyle = cmCTestMemCheckHandler::VALGRIND;
+      }
+    else if(checkType == "CudaMemCheck")
+      {
+      this->MemoryTesterStyle = cmCTestMemCheckHandler::CUDA_MEMCHECK;
       }
     }
   if(this->MemoryTester.size() == 0 )
@@ -614,6 +638,12 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
     {
     memoryTesterOptions = this->CTest->GetCTestConfiguration(
       "ValgrindCommandOptions");
+    }
+  else if ( this->CTest->GetCTestConfiguration(
+      "CudaMemCheckCommandOptions").size() )
+    {
+    memoryTesterOptions = this->CTest->GetCTestConfiguration(
+      "CudaMemCheckCommandOptions");
     }
   this->MemoryTesterOptions
     = cmSystemTools::ParseArguments(memoryTesterOptions.c_str());
@@ -736,6 +766,22 @@ bool cmCTestMemCheckHandler::InitializeMemoryChecking()
       this->MemoryTesterEnvironmentVariable = outputFile + extraOptions;
       break;
       }
+    case cmCTestMemCheckHandler::CUDA_MEMCHECK:
+      {
+      if ( this->MemoryTesterOptions.empty() )
+        {
+        // cuda-memcheck doesn't support --option=value notation, only --option value
+        this->MemoryTesterOptions.push_back("--tool");
+        this->MemoryTesterOptions.push_back("memcheck");
+        this->MemoryTesterOptions.push_back("--leak-check");
+        this->MemoryTesterOptions.push_back("full");
+        }
+      this->MemoryTesterOptions.push_back("--prefix");
+      this->MemoryTesterOptions.push_back(CUDA_MEMCHECK_MARKER);
+      this->MemoryTesterDynamicOptions.push_back("--log-file");
+      this->MemoryTesterDynamicOptions.push_back(this->MemoryTesterOutputFile);
+      break;
+      }
     default:
       cmCTestLog(this->CTest, ERROR_MESSAGE,
         "Do not understand memory checker: " << this->MemoryTester
@@ -780,6 +826,10 @@ ProcessMemCheckOutput(const std::string& str,
     cmCTestMemCheckHandler::BOUNDS_CHECKER )
     {
     return this->ProcessMemCheckBoundsCheckerOutput(str, log, results);
+    }
+  if ( this->MemoryTesterStyle == cmCTestMemCheckHandler::CUDA_MEMCHECK )
+    {
+    return this->ProcessMemCheckCudaMemCheckOutput(str, log, results);
     }
   else
     {
@@ -1073,6 +1123,86 @@ bool cmCTestMemCheckHandler::ProcessMemCheckValgrindOutput(
   // limiting code
   for(std::vector<std::string::size_type>::iterator i =
         nonValGrindOutput.begin(); i != nonValGrindOutput.end(); ++i)
+    {
+    totalOutputSize += lines[*i].size();
+    cmCTestLog(this->CTest, DEBUG, "before xml safe "
+               << lines[*i] << std::endl);
+    cmCTestLog(this->CTest, DEBUG, "after  xml safe "
+               <<  cmXMLSafe(lines[*i]) << std::endl);
+    ostr << cmXMLSafe(lines[*i]) << std::endl;
+    if(!unlimitedOutput && totalOutputSize >
+       static_cast<size_t>(this->CustomMaximumFailedTestOutputSize))
+      {
+      ostr << "....\n";
+      ostr << "Test Output for this test has been truncated see testing"
+        " machine logs for full output,\n";
+      ostr << "or put CTEST_FULL_OUTPUT in the output of "
+        "this test program.\n";
+      break;  // stop the copy of output if we are full
+      }
+    }
+  cmCTestLog(this->CTest, DEBUG, "End test (elapsed: "
+             << (cmSystemTools::GetTime() - sttime) << std::endl);
+  log = ostr.str();
+  if ( defects )
+    {
+    return false;
+    }
+  return true;
+}
+
+//----------------------------------------------------------------------
+bool cmCTestMemCheckHandler::ProcessMemCheckCudaMemCheckOutput(
+  const std::string& str, std::string& log,
+  std::vector<int>& results)
+{
+  std::vector<std::string> lines;
+  cmSystemTools::Split(str.c_str(), lines);
+  bool unlimitedOutput = false;
+  if(str.find("CTEST_FULL_OUTPUT") != str.npos ||
+    this->CustomMaximumFailedTestOutputSize == 0)
+    {
+    unlimitedOutput = true;
+    }
+
+  std::string::size_type cc;
+
+  cmOStringStream ostr;
+  log = "";
+
+  int defects = 0;
+
+  cmsys::RegularExpression cudaMemcheckLine("^" CUDA_MEMCHECK_MARKER);
+
+  std::vector<std::string::size_type> nonCudaMemcheckOutput;
+  double sttime = cmSystemTools::GetTime();
+  cmCTestLog(this->CTest, DEBUG, "Start test: " << lines.size() << std::endl);
+  std::string::size_type totalOutputSize = 0;
+  for ( cc = 0; cc < lines.size(); cc ++ )
+    {
+    cmCTestLog(this->CTest, DEBUG, "test line "
+               << lines[cc] << std::endl);
+
+    if ( cudaMemcheckLine.find(lines[cc]) )
+      {
+      cmCTestLog(this->CTest, DEBUG, "cuda-memcheck line "
+                 << lines[cc] << std::endl);
+      results[0] ++; // TODO : split CUDA-MEMCHECK errors on groups
+      defects ++;
+      totalOutputSize += lines[cc].size();
+      ostr << cmXMLSafe(lines[cc]) << std::endl;
+      }
+    else
+      {
+      nonCudaMemcheckOutput.push_back(cc);
+      }
+    }
+
+  // Now put all all the non cuda-memcheck output into the test output
+  // This should be last in case it gets truncated by the output
+  // limiting code
+  for(std::vector<std::string::size_type>::iterator i =
+        nonCudaMemcheckOutput.begin(); i != nonCudaMemcheckOutput.end(); ++i)
     {
     totalOutputSize += lines[*i].size();
     cmCTestLog(this->CTest, DEBUG, "before xml safe "
