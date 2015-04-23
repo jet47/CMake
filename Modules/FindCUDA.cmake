@@ -290,18 +290,32 @@
 #                            Only available for CUDA version 4.0+.
 #   CUDA_curand_LIBRARY   -- CUDA Random Number Generation library.
 #                            Only available for CUDA version 3.2+.
+#   CUDA_curand_static_LIBRARY -- CUDA Random Number Generation library (static version).
+#                                 Only available for CUDA version 6.5+.
 #   CUDA_cusolver_LIBRARY -- CUDA Direct Solver library.
 #                            Only available for CUDA version 7.0+.
+#   CUDA_cusolver_static_LIBRARY -- CUDA Direct Solver library (static version).
+#                                   Only available for CUDA version 7.0+.
 #   CUDA_cusparse_LIBRARY -- CUDA Sparse Matrix library.
 #                            Only available for CUDA version 3.2+.
+#   CUDA_cusparse_static_LIBRARY -- CUDA Sparse Matrix library (static version).
+#                                   Only available for CUDA version 6.5+.
 #   CUDA_npp_LIBRARY      -- NVIDIA Performance Primitives lib.
 #                            Only available for CUDA version 4.0+.
+#   CUDA_npp_static_LIBRARY      -- NVIDIA Performance Primitives lib.
+#                                   Only available for CUDA version 6.5+.
 #   CUDA_nppc_LIBRARY     -- NVIDIA Performance Primitives lib (core).
 #                            Only available for CUDA version 5.5+.
+#   CUDA_nppc_static_LIBRARY     -- NVIDIA Performance Primitives lib (core, static version).
+#                                   Only available for CUDA version 6.5+.
 #   CUDA_nppi_LIBRARY     -- NVIDIA Performance Primitives lib (image processing).
 #                            Only available for CUDA version 5.5+.
+#   CUDA_nppi_static_LIBRARY     -- NVIDIA Performance Primitives lib (image processing, static version).
+#                                   Only available for CUDA version 5.5+.
 #   CUDA_npps_LIBRARY     -- NVIDIA Performance Primitives lib (signal processing).
 #                            Only available for CUDA version 5.5+.
+#   CUDA_npps_static_LIBRARY     -- NVIDIA Performance Primitives lib (signal processing, static version).
+#                                   Only available for CUDA version 5.5+.
 #   CUDA_nvcuvenc_LIBRARY -- CUDA Video Encoder library.
 #                            Only available for CUDA version 3.2+.
 #                            Windows only.
@@ -539,12 +553,19 @@ macro(cuda_unset_include_and_libraries)
   unset(CUDA_cufftemu_LIBRARY CACHE)
   unset(CUDA_cupti_LIBRARY CACHE)
   unset(CUDA_curand_LIBRARY CACHE)
+  unset(CUDA_curand_static_LIBRARY CACHE)
   unset(CUDA_cusolver_LIBRARY CACHE)
+  unset(CUDA_cusolver_static_LIBRARY CACHE)
   unset(CUDA_cusparse_LIBRARY CACHE)
+  unset(CUDA_cusparse_static_LIBRARY CACHE)
   unset(CUDA_npp_LIBRARY CACHE)
+  unset(CUDA_npp_static_LIBRARY CACHE)
   unset(CUDA_nppc_LIBRARY CACHE)
+  unset(CUDA_nppc_static_LIBRARY CACHE)
   unset(CUDA_nppi_LIBRARY CACHE)
+  unset(CUDA_nppi_static_LIBRARY CACHE)
   unset(CUDA_npps_LIBRARY CACHE)
+  unset(CUDA_npps_static_LIBRARY CACHE)
   unset(CUDA_nvcuvenc_LIBRARY CACHE)
   unset(CUDA_nvcuvid_LIBRARY CACHE)
 
@@ -831,6 +852,10 @@ if(NOT CUDA_VERSION VERSION_LESS "3.2")
   # cusparse showed up in version 3.2
   find_cuda_helper_libs(cusparse)
   find_cuda_helper_libs(curand)
+  if(NOT CUDA_VERSION VERSION_LESS "6.5")
+    find_cuda_helper_libs(cusparse_static)
+    find_cuda_helper_libs(curand_static)
+  endif()
   if (WIN32)
     find_cuda_helper_libs(nvcuvenc)
     find_cuda_helper_libs(nvcuvid)
@@ -842,12 +867,19 @@ if(CUDA_VERSION VERSION_GREATER "5.0")
   find_cuda_helper_libs(nppi)
   find_cuda_helper_libs(npps)
   set(CUDA_npp_LIBRARY "${CUDA_nppc_LIBRARY};${CUDA_nppi_LIBRARY};${CUDA_npps_LIBRARY}")
+  if(NOT CUDA_VERSION VERSION_LESS "6.5")
+    find_cuda_helper_libs(nppc_static)
+    find_cuda_helper_libs(nppi_static)
+    find_cuda_helper_libs(npps_static)
+    set(CUDA_npp_static_LIBRARY "${CUDA_nppc_static_LIBRARY};${CUDA_nppi_static_LIBRARY};${CUDA_npps_static_LIBRARY}")
+  endif()
 elseif(NOT CUDA_VERSION VERSION_LESS "4.0")
   find_cuda_helper_libs(npp)
 endif()
 if(NOT CUDA_VERSION VERSION_LESS "7.0")
   # cusolver showed up in version 7.0
   find_cuda_helper_libs(cusolver)
+  find_cuda_helper_libs(cusolver_static)
 endif()
 
 if (CUDA_BUILD_EMULATION)
